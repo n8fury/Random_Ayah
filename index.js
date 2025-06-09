@@ -1,9 +1,14 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const cron = require('node-cron');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Add your Unsplash Access Key here
+const UNSPLASH_ACCESS_KEY =
+  process.env.UNSPLASH_ACCESS_KEY || 'YOUR_UNSPLASH_ACCESS_KEY_HERE';
 
 // Middleware
 app.use(cors());
@@ -103,24 +108,74 @@ function getAvailableCategories() {
   return Object.keys(categorizedAyahs);
 }
 
-// Function to get random background image from Unsplash
-function getRandomBackgroundImage() {
-  const imageQueries = [
-    'mosque',
-    'islamic+architecture',
-    'desert+landscape',
-    'mountain+sunset',
-    'peaceful+nature',
-    'golden+hour+sky',
-    'serene+ocean',
-    'calm+forest',
-  ];
-  const randomQuery =
-    imageQueries[Math.floor(Math.random() * imageQueries.length)];
-  const randomSeed = Math.floor(Math.random() * 10000);
+// Function to fetch random background image from Unsplash API
+async function fetchRandomBackgroundImage() {
+  if (
+    !UNSPLASH_ACCESS_KEY ||
+    UNSPLASH_ACCESS_KEY === 'YOUR_UNSPLASH_ACCESS_KEY_HERE'
+  ) {
+    console.warn(
+      '⚠️ Unsplash API key not configured. Using fallback gradient.'
+    );
+    return null; // Will use CSS gradient fallback
+  }
 
-  // Using Unsplash API with updated format
-  return `https://source.unsplash.com/1920x1080?${randomQuery}&v=${randomSeed}`;
+  try {
+    // Curated search terms for high-quality nature scenes without humans
+    const searchTerms = [
+      'sea sunset horizon',
+      'ocean sunrise golden hour',
+      'sky sunset clouds',
+      'sunrise mountain peaks',
+      'snow covered mountains',
+      'snowy mountain landscape',
+      'ocean waves sunset',
+      'sea horizon sunrise',
+      'mountain sunrise snow',
+      'sky clouds sunset dramatic',
+      'snow mountain peaks blue sky',
+      'ocean sunset reflection',
+    ];
+
+    const randomTerm =
+      searchTerms[Math.floor(Math.random() * searchTerms.length)];
+
+    // Enhanced API call with specific parameters for high-quality nature images
+    const response = await fetch(
+      `https://api.unsplash.com/photos/random?` +
+        `query=${encodeURIComponent(randomTerm)}` +
+        `&orientation=landscape` +
+        `&w=1920&h=1080` +
+        `&content_filter=high` +
+        `&featured=true`,
+      {
+        headers: {
+          Authorization: `Client-ID ${UNSPLASH_ACCESS_KEY}`,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Unsplash API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    // Use the full resolution URL for crisp 1920x1080 images
+    const imageUrl = data.urls.full || data.urls.raw;
+
+    // Add parameters to ensure exact dimensions and quality
+    const optimizedUrl = `${imageUrl}&w=1920&h=1080&fit=crop&crop=center&q=85`;
+
+    console.log(
+      `🖼️ Fetched image: "${data.alt_description}" by ${data.user.name}`
+    );
+
+    return optimizedUrl;
+  } catch (error) {
+    console.error('❌ Error fetching Unsplash image:', error.message);
+    return null; // Will use CSS gradient fallback
+  }
 }
 
 // Function to fetch ayah data from API
@@ -183,7 +238,9 @@ async function updateCurrentAyah(category = null) {
 
     const ayahData = await fetchAyahData(selectedAyah.surah, selectedAyah.ayah);
     currentAyah = ayahData;
-    currentBackgroundImage = getRandomBackgroundImage();
+
+    // Fetch new background image
+    currentBackgroundImage = await fetchRandomBackgroundImage();
     lastUpdateTime = new Date();
 
     console.log(
@@ -191,6 +248,12 @@ async function updateCurrentAyah(category = null) {
         ayahData.reference
       } at ${lastUpdateTime.toISOString()}`
     );
+
+    if (currentBackgroundImage) {
+      console.log('🖼️ Background image updated from Unsplash');
+    } else {
+      console.log('🎨 Using gradient background (no Unsplash API key)');
+    }
   } catch (error) {
     console.error('❌ Error updating current ayah:', error);
   }
@@ -234,7 +297,7 @@ app.get('/api/ayah/:category', async (req, res) => {
 
     const ayahData = await fetchAyahData(selectedAyah.surah, selectedAyah.ayah);
     ayahData.category = category;
-    ayahData.backgroundImage = getRandomBackgroundImage();
+    ayahData.backgroundImage = await fetchRandomBackgroundImage();
 
     res.json(ayahData);
   } catch (error) {
@@ -284,6 +347,9 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     currentAyah: currentAyah ? currentAyah.reference : 'None',
     lastUpdate: lastUpdateTime?.toISOString() || 'Never',
+    unsplashConfigured:
+      UNSPLASH_ACCESS_KEY &&
+      UNSPLASH_ACCESS_KEY !== 'YOUR_UNSPLASH_ACCESS_KEY_HERE',
   });
 });
 
@@ -348,8 +414,10 @@ app.get('/', async (req, res) => {
     `);
   }
 
-  const backgroundImageUrl =
-    currentBackgroundImage || getRandomBackgroundImage();
+  // Use Unsplash image if available, otherwise use gradient
+  const backgroundStyle = currentBackgroundImage
+    ? `background-image: url('${currentBackgroundImage}');`
+    : `background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);`;
 
   res.send(`
     <!DOCTYPE html>
@@ -369,7 +437,7 @@ app.get('/', async (req, res) => {
             body {
                 font-family: 'Inter', sans-serif;
                 min-height: 100vh;
-                background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+                ${backgroundStyle}
                 background-size: cover;
                 background-position: center;
                 background-attachment: fixed;
@@ -378,22 +446,6 @@ app.get('/', async (req, res) => {
                 align-items: center;
                 position: relative;
                 overflow-x: hidden;
-            }
-
-            /* Background image layer */
-            body::after {
-                content: '';
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 100%;
-                height: 100%;
-                background-image: url('${backgroundImageUrl}');
-                background-size: cover;
-                background-position: center;
-                background-attachment: fixed;
-                opacity: 0.3;
-                z-index: 0;
             }
 
             /* Dark overlay for better text readability */
@@ -611,6 +663,20 @@ app.listen(PORT, async () => {
   console.log(
     `🔄 Cron jobs: 3-hourly updates, Daily motivation (6 AM), Evening calmness (8 PM)`
   );
+
+  if (
+    !UNSPLASH_ACCESS_KEY ||
+    UNSPLASH_ACCESS_KEY === 'YOUR_UNSPLASH_ACCESS_KEY_HERE'
+  ) {
+    console.log(
+      '⚠️  No Unsplash API key configured. Using gradient backgrounds.'
+    );
+    console.log(
+      '   To get beautiful images, set UNSPLASH_ACCESS_KEY environment variable.'
+    );
+  } else {
+    console.log('🖼️  Unsplash API configured for background images');
+  }
 
   // Initialize server with first ayah
   await initializeServer();
