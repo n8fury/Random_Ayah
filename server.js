@@ -86,6 +86,7 @@ const categorizedAyahs = {
 // Store current ayah in memory
 let currentAyah = null;
 let lastUpdateTime = null;
+let currentBackgroundImage = null;
 
 // Function to get random ayah from category
 function getRandomAyahFromCategory(category) {
@@ -100,6 +101,26 @@ function getRandomAyahFromCategory(category) {
 // Function to get all available categories
 function getAvailableCategories() {
   return Object.keys(categorizedAyahs);
+}
+
+// Function to get random background image from Unsplash
+function getRandomBackgroundImage() {
+  const imageQueries = [
+    'mosque',
+    'islamic+architecture',
+    'desert+landscape',
+    'mountain+sunset',
+    'peaceful+nature',
+    'golden+hour+sky',
+    'serene+ocean',
+    'calm+forest',
+  ];
+  const randomQuery =
+    imageQueries[Math.floor(Math.random() * imageQueries.length)];
+  const randomSeed = Math.floor(Math.random() * 10000);
+
+  // Using Unsplash API with updated format
+  return `https://source.unsplash.com/1920x1080?${randomQuery}&v=${randomSeed}`;
 }
 
 // Function to fetch ayah data from API
@@ -162,6 +183,7 @@ async function updateCurrentAyah(category = null) {
 
     const ayahData = await fetchAyahData(selectedAyah.surah, selectedAyah.ayah);
     currentAyah = ayahData;
+    currentBackgroundImage = getRandomBackgroundImage();
     lastUpdateTime = new Date();
 
     console.log(
@@ -187,6 +209,7 @@ app.get('/api/current-ayah', (req, res) => {
 
   res.json({
     ...currentAyah,
+    backgroundImage: currentBackgroundImage,
     cached: true,
     lastUpdated: lastUpdateTime?.toISOString(),
   });
@@ -211,6 +234,7 @@ app.get('/api/ayah/:category', async (req, res) => {
 
     const ayahData = await fetchAyahData(selectedAyah.surah, selectedAyah.ayah);
     ayahData.category = category;
+    ayahData.backgroundImage = getRandomBackgroundImage();
 
     res.json(ayahData);
   } catch (error) {
@@ -243,6 +267,7 @@ app.post('/api/refresh', async (req, res) => {
     res.json({
       message: 'Ayah refreshed successfully',
       ayah: currentAyah,
+      backgroundImage: currentBackgroundImage,
     });
   } catch (error) {
     res.status(500).json({
@@ -262,52 +287,297 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Simple HTML page showing current ayah
-app.get('/', (req, res) => {
+// Beautiful HTML page showing current ayah
+app.get('/', async (req, res) => {
+  // If no current ayah, initialize one immediately
   if (!currentAyah) {
-    return res.send(`
-            <html>
-                <head><title>Quran Quote API</title></head>
-                <body style="font-family: Arial; padding: 20px; text-align: center;">
-                    <h1>🕌 Quran Quote API</h1>
-                    <p>System initializing... Please wait.</p>
-                    <p><a href="/api/categories">View Categories</a></p>
-                </body>
-            </html>
-        `);
+    try {
+      await updateCurrentAyah();
+    } catch (error) {
+      console.error('Failed to initialize ayah:', error);
+    }
   }
 
-  res.send(`
-        <html>
-            <head>
-                <title>Quran Quote API</title>
-                <meta charset="UTF-8">
-                <style>
-                    body { font-family: Arial; padding: 20px; text-align: center; }
-                    .arabic { font-size: 24px; margin: 20px 0; direction: rtl; }
-                    .translation { font-style: italic; margin: 15px 0; }
-                    .source { color: #666; margin: 10px 0; }
-                </style>
-            </head>
-            <body>
-                <div class="arabic">${currentAyah.arabic}</div>
-                <div class="translation">${currentAyah.translation}</div>
-                <div class="source">${currentAyah.reference}</div>
-            </body>
-        </html>
+  // If still no ayah after initialization attempt, show error
+  if (!currentAyah) {
+    return res.send(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>🕌 Quran Quote API</title>
+          <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body {
+                  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                  min-height: 100vh;
+                  display: flex;
+                  justify-content: center;
+                  align-items: center;
+                  color: white;
+              }
+              .container {
+                  text-align: center;
+                  padding: 40px;
+                  background: rgba(0,0,0,0.3);
+                  border-radius: 20px;
+                  backdrop-filter: blur(10px);
+              }
+              h1 { font-size: 2.5rem; margin-bottom: 20px; }
+              p { font-size: 1.2rem; margin: 10px 0; }
+              a { color: #ffd700; text-decoration: none; }
+              a:hover { text-decoration: underline; }
+          </style>
+          <script>
+              // Auto refresh page after 2 seconds
+              setTimeout(() => {
+                  window.location.reload();
+              }, 2000);
+          </script>
+      </head>
+      <body>
+          <div class="container">
+              <h1>🕌 Quran Quote API</h1>
+              <p>Loading...</p>
+              <p><a href="/api/categories">View Categories</a></p>
+          </div>
+      </body>
+      </html>
     `);
+  }
+
+  const backgroundImageUrl =
+    currentBackgroundImage || getRandomBackgroundImage();
+
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>🕌 Quran Quote - ${currentAyah.reference}</title>
+        <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+
+            body {
+                font-family: 'Inter', sans-serif;
+                min-height: 100vh;
+                background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+                background-size: cover;
+                background-position: center;
+                background-attachment: fixed;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                position: relative;
+                overflow-x: hidden;
+            }
+
+            /* Background image layer */
+            body::after {
+                content: '';
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-image: url('${backgroundImageUrl}');
+                background-size: cover;
+                background-position: center;
+                background-attachment: fixed;
+                opacity: 0.3;
+                z-index: 0;
+            }
+
+            /* Dark overlay for better text readability */
+            body::before {
+                content: '';
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.6);
+                z-index: 1;
+            }
+
+            .container {
+                position: relative;
+                z-index: 2;
+                max-width: 900px;
+                margin: 0 auto;
+                padding: 60px 40px;
+                text-align: center;
+                background: rgba(255, 255, 255, 0.05);
+                backdrop-filter: blur(15px);
+                border-radius: 25px;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+                animation: fadeIn 1s ease-out;
+            }
+
+            @keyframes fadeIn {
+                from {
+                    opacity: 0;
+                    transform: translateY(30px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+
+            .arabic-text {
+                font-family: 'Amiri', serif;
+                font-size: 2.8rem;
+                line-height: 1.8;
+                color: #ffffff;
+                margin: 30px 0;
+                direction: rtl;
+                text-align: center;
+                font-weight: 400;
+                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+                letter-spacing: 0.5px;
+            }
+
+            .translation {
+                font-family: 'Inter', sans-serif;
+                font-size: 1.4rem;
+                line-height: 1.7;
+                color: #e8f4fd;
+                margin: 30px 0;
+                font-weight: 300;
+                font-style: italic;
+                text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7);
+                max-width: 800px;
+                margin-left: auto;
+                margin-right: auto;
+            }
+
+            .reference {
+                font-family: 'Inter', sans-serif;
+                font-size: 1.1rem;
+                color: #b8d4f0;
+                margin: 25px 0;
+                font-weight: 500;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+            }
+
+            .last-updated {
+                margin-top: 30px;
+                font-size: 0.9rem;
+                color: rgba(255, 255, 255, 0.6);
+                font-weight: 300;
+            }
+
+            /* Responsive design */
+            @media (max-width: 768px) {
+                .container {
+                    margin: 20px;
+                    padding: 40px 25px;
+                }
+                
+                .arabic-text {
+                    font-size: 2.2rem;
+                    line-height: 1.6;
+                }
+                
+                .translation {
+                    font-size: 1.2rem;
+                    line-height: 1.6;
+                }
+                
+                .reference {
+                    font-size: 1rem;
+                }
+            }
+
+            @media (max-width: 480px) {
+                .arabic-text {
+                    font-size: 1.8rem;
+                }
+                
+                .translation {
+                    font-size: 1.1rem;
+                }
+                
+                .container {
+                    padding: 30px 20px;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="arabic-text">${currentAyah.arabic}</div>
+            <div class="translation">"${currentAyah.translation}"</div>
+            <div class="reference">${currentAyah.reference}</div>
+        </div>
+
+        <script>
+            // Check if page should refresh (every 3 hours)
+            const lastUpdate = new Date('${currentAyah.lastUpdated}');
+            const now = new Date();
+            const timeDiff = (now - lastUpdate) / (1000 * 60 * 60); // difference in hours
+            
+            // If more than 3 hours have passed, refresh
+            if (timeDiff >= 3) {
+                fetch('/api/refresh', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                }).then(() => {
+                    window.location.reload();
+                }).catch(() => {
+                    // If API call fails, just reload the page
+                    window.location.reload();
+                });
+            }
+
+            // Refresh when user comes back to tab after being away
+            let pageHidden = false;
+            document.addEventListener('visibilitychange', function() {
+                if (pageHidden && !document.hidden) {
+                    const now = new Date();
+                    const lastUpdate = new Date('${currentAyah.lastUpdated}');
+                    const timeDiff = (now - lastUpdate) / (1000 * 60 * 60); // difference in hours
+                    
+                    // If it's been more than 2 hours, refresh
+                    if (timeDiff >= 2) {
+                        fetch('/api/refresh', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            }
+                        }).then(() => {
+                            window.location.reload();
+                        }).catch(() => {
+                            window.location.reload();
+                        });
+                    }
+                }
+                pageHidden = document.hidden;
+            });
+        </script>
+    </body>
+    </html>
+  `);
 });
 
 // Cron Jobs
-// Update ayah every hour
-cron.schedule('0 * * * *', () => {
-  console.log('🕐 Hourly ayah update triggered');
-  updateCurrentAyah();
-});
-
-// Update ayah every 6 hours with random category
-cron.schedule('0 */6 * * *', () => {
-  console.log('🕕 6-hourly ayah update triggered');
+// Update ayah every 3 hours
+cron.schedule('0 */3 * * *', () => {
+  console.log('🕐 3-hourly ayah update triggered');
   updateCurrentAyah();
 });
 
@@ -323,14 +593,25 @@ cron.schedule('0 20 * * *', () => {
   updateCurrentAyah('calmness');
 });
 
-// Initialize with first ayah
-updateCurrentAyah();
+// Initialize with first ayah immediately when server starts
+const initializeServer = async () => {
+  try {
+    await updateCurrentAyah();
+    console.log('✅ Server initialized with first ayah');
+  } catch (error) {
+    console.error('❌ Failed to initialize server with ayah:', error);
+  }
+};
 
-app.listen(PORT, () => {
+// Start the server
+app.listen(PORT, async () => {
   console.log(`🚀 Quran Quote API running on port ${PORT}`);
   console.log(`📖 Current ayah: http://localhost:${PORT}/api/current-ayah`);
   console.log(`📚 Categories: http://localhost:${PORT}/api/categories`);
   console.log(
-    `🔄 Cron jobs: Hourly updates, Daily motivation (6 AM), Evening calmness (8 PM)`
+    `🔄 Cron jobs: 3-hourly updates, Daily motivation (6 AM), Evening calmness (8 PM)`
   );
+
+  // Initialize server with first ayah
+  await initializeServer();
 });
